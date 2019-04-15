@@ -1,0 +1,4 @@
+__pycache__/
+lexica/ranked*
+lexica/cross*
+lexica/temp
