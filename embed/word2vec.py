@@ -14,15 +14,21 @@ and so on. Use good practices and recognize that most of the etl boilerplate can
 via stream classes that perform all that internal logic. Think oop.
 """
 
-from ascii_text_normalizer import AsciiTextNormalizer
+import os
 import sys
+sys.path.insert(1, os.path.join(sys.path[0], '..'))
+
+from ascii_text_normalizer import AsciiTextNormalizer
 import re
 import gensim
 import traceback
 from random import shuffle
 from streams import *
 
-stopwords = [w.strip() for w in open("./lexicon/stopwords.txt", "r").readlines()]
+
+
+
+stopwords = [w.strip() for w in open("../lexica/stopwords.txt", "r").readlines()]
 
 def Train():
 	vecModel = gensim.models.Word2Vec(seqStream, size=vecSize, window=windowSize, iter=numIterations, min_count=minTermFrequency, workers=workers, sg=(model == "SKIPGRAM"))
@@ -51,6 +57,7 @@ def usage():
 	print("\t-vecSize=[feature vector size]")
 	print("\t-minFreq=[minimum term frequency]")
 	print("\t-model=[CBOW, SKIPGRAM]")
+	print("\t-ofile=[file to save model]")
 	print("\t-stream=[SENTENCE, FBDATA, or NEWLINE] Sentence will generate sequences from sentence, newline from file lines, fbdata from og_object parsing.")
 	print("\t-windowSize=[training window size]")
 	print("\t-validationLexicon=[path to some lexicon]")
