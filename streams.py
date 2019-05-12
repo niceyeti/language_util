@@ -6,7 +6,8 @@ inheriting from those classes to implement ones that would read and preprocess h
 and so on. Use good practices and recognize that most of the etl boilerplate can probably be covered
 via stream classes that perform all that internal logic. Think OOP.
 
-
+Note that many of these generators can be chained: Use a fb-data parser to stream components of fb-data items to a file
+as sentences, then use a file-line generator to feed those elsewhere.
 
 """
 
@@ -63,19 +64,32 @@ class FileLineStream(object):
 					#yield self._textNormalizer.NormalizeText(line).split()
 
 class FbDataFileTokenStream(object):
-	def __init__(self, fname, limit, fields=[], asSentences=False):
+	def __init__(self, fname, limit, fields=[], args=[]):
 		"""
 		This class is completely ad hoc for experimenting with how quickly gensim can build a model from a large ****-based fbData.py file.
 
 		@fname: The path to some file containing text which will be haphazardly broken into training sequences per-line.
 		@limit: The number of sequences to generate before terminating the stream. If -1, then no limit (entire file).
 		@fields: The og_object fields (keys) whose values will be concatenated.
-		@asTokens: If true, generator returns normalized sentences per text value. Else, generates words, with normalizedText.split()
+		@asSentences: If true, generator returns normalized sentences (sequences of words). Else, generates words (character sequences).
+
+		@args: A list of arguments, defined over:
+			--sentences to get output sequences as sentences; if not passed, generates sequences where each sequence is a word (sequence of chars)
+			--filterNonAlphanum, --deleteFiltered, --lowercase: Arguments to NormalizeText(). These all default to False.
+			--stopSymbol: If passed, every generated sequence will be terminated with the stop symbol. This is used to generate data for models
+			that have a sense of sequence length/termination, e.g. finite horizon.
 		"""
 		self._fname = fname
 		self._limit = limit
 		self._fields = fields
-		self._asSentences = asSentences
+		args = [arg.lower() for arg in args]
+		self._asSentences = "--sentences" in args
+		self._asLower = "--lower" in args or "--lowercase" in args
+		self._deleteFiltered = "--deletefiltered" in args
+		self._filterNonAlphaNum = "--filternonalphanum" in args
+		self._useStopSymbol = "--stopsymbol" in args or "--stop" in args
+		#Obviously, this has to be added after text normalization so it isn't filtered out
+		self._stopSymbol = "."
 		self._textNormalizer = AsciiTextNormalizer()
 		if any([field not in ["title", "description"] for field in self._fields]):
 			raise Exception("Invalid fields: {}. Only title and description are valid for og-objects.".format(fields))
@@ -91,7 +105,19 @@ class FbDataFileTokenStream(object):
 			if "description" in self._fields:
 				text = text + " " + ogDict["description"]
 
-		return self._textNormalizer.NormalizeText(text, filterNonAlphaNum=True, deleteFiltered=True, lowercase=True)
+		return self._textNormalizer.NormalizeText(text, filterNonAlphaNum=self._filterNonAlphaNum, deleteFiltered=self._deleteFiltered, lowercase=self._asLower)
+
+	def _getSeq(self, text):
+		#Only call this after text normalization
+		if self._asSentences:
+			seq = text
+			if self._useStopSymbol:
+				seq = seq + " " + self._stopSymbol
+		else:
+			seq = text.split()
+			if self._useStopSymbol:
+				seq.append(self._stopSymbol)
+		return seq
 
 	def __iter__(self):
 		with open(self._fname, "r") as sequenceFile:
@@ -101,13 +127,11 @@ class FbDataFileTokenStream(object):
 					ogDict = eval(line)[1]["og_object"]
 					if self._limit < 0 or ct < self._limit:
 						text = self._getText(ogDict)
+						seq = self._getSeq(text)
 						ct += 1
-						#print(text)
-						if self._asSentences:
-							yield text
-						else:
-							yield text.split()
+						yield seq
 					else:
+						print("Generator exiting after yielding {} sequences".format(ct))
 						break
 				except:
 					#traceback.print_exc()
